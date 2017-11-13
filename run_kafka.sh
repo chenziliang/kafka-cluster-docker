@@ -22,11 +22,16 @@ do
     if [ "${res}" != ""  ]; then
         sed -E -i"" "s@^#?${key}.*@${key}=${value}@g" config/server.properties
     else
+        echo "" >> config/server.properties
         echo ${setting} >> config/server.properties
     fi
 
 done
 
-sleep 5
+sleep 20
 
-./bin/kafka-server-start.sh config/server.properties
+while :
+do
+    ./bin/kafka-server-start.sh config/server.properties
+    sleep 1
+done

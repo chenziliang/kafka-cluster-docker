@@ -19,10 +19,19 @@ do
     if [ "${res}" != ""  ]; then
         sed -E -i"" "s@^#?${key}.*@${key}=${value}@g" config/zookeeper.properties
     else
+        echo "" >> config/server.properties
         echo ${setting} >> config/zookeeper.properties
     fi
 done
 
 echo ${ZOOKEEPER_servers} | sed "s#,#\n#g" >> config/zookeeper.properties
-echo "${ZOOKEEPER_myid}" > /${ZOOKEEPER_dataDir}/myid
-./bin/zookeeper-server-start.sh config/zookeeper.properties
+mkdir -p ${ZOOKEEPER_dataDir}
+echo "${ZOOKEEPER_myid}" > ${ZOOKEEPER_dataDir}/myid
+
+sleep 10 # to wait the service name to broadcast
+
+while :
+do
+    ./bin/zookeeper-server-start.sh config/zookeeper.properties
+    sleep 1
+done
