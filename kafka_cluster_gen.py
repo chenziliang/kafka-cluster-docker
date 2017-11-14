@@ -144,9 +144,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-v', '--version', default='2',
                         help='[2|3]. Docker compose file version 2 or 3')
+    parser.add_argument('-i', '--image', default=DOCKER_IMAGE,
+                        help='Docker image')
     args = parser.parse_args()
     gen = KafkaClusterYamlGen(
-        DOCKER_IMAGE, args.version, 'kafka_cluster_gen.yaml')
+        args.image, args.version, 'kafka_cluster_gen.yaml')
     gen.num_of_zk = ZOOKEEPER_CLUSTER_SIZE
     gen.zk_prefix = ZOOKEEPER_NAME_PREFIX
     gen.zk_opts = ZOOKEEPER_OPTS
