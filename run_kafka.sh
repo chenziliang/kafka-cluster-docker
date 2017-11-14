@@ -28,6 +28,8 @@ do
 
 done
 
+mkdir -p "${KAFKA_log_dirs}"
+
 sleep 20
 
 while :
