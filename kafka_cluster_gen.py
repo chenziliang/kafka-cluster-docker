@@ -32,10 +32,9 @@ ZOOKEEPER_OPTS = [
 
 class KafkaClusterYamlGen(object):
 
-    def __init__(self, image, version, yaml_filename):
+    def __init__(self, image, version):
         self.image = image
         self.version = version
-        self.yaml = yaml_filename
 
         self.num_of_zk = 0
         self.zk_prefix = ''
@@ -50,15 +49,19 @@ class KafkaClusterYamlGen(object):
         self.min_jvm_memory = 0
 
     def gen(self):
+        '''
+        @return: docker compose yaml string in version 2 or 3 format
+        '''
+
         yaml_lines = self._do_gen()
-        with open(self.yaml, 'w') as f:
-            if self.version >= '3':
-                f.write('version: \'{}\'\n'.format(self.version))
-                f.write('services:\n')
-                for i, lin in enumerate(yaml_lines):
-                    if lin != '\n':
-                        yaml_lines[i] = '  ' + lin
-            f.write('\n'.join(yaml_lines))
+        if self.version >= '3':
+            for i, lin in enumerate(yaml_lines):
+                if lin != '\n':
+                    yaml_lines[i] = '  ' + lin
+
+            yaml_lines.insert(0, 'version: \'{}\'\n'.format(self.version))
+            yaml_lines.insert(0, 'services:\n')
+        return '\n'.join(yaml_lines)
 
     def _do_gen(self):
         zk_yaml = self._do_gen_zk()
@@ -165,7 +168,7 @@ def main():
 
     args = parser.parse_args()
     gen = KafkaClusterYamlGen(
-        args.image, args.version, 'kafka_cluster_gen.yaml')
+        args.image, args.version)
 
     gen.num_of_zk = args.zookeeper_size
     gen.zk_prefix = ZOOKEEPER_NAME_PREFIX
@@ -178,7 +181,13 @@ def main():
     gen.max_jvm_memory = args.max_jvm_memory
     gen.min_jvm_memory = args.min_jvm_memory
 
-    gen.gen()
+    yaml = gen.gen()
+
+    yaml_file = 'kafka_cluster_gen.yaml'
+    with open(yaml_file, 'w') as f:
+        f.write(yaml)
+
+    print 'finish generating kafka cluster yaml file in ', yaml_file
 
 
 if __name__ == '__main__':
