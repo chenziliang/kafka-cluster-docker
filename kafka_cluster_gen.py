@@ -3,50 +3,41 @@
 import argparse
 
 
-DOCKER_IMAGE = 'zlchen/kafka-cluster:0.11'
-KAFKA_BROKER_CLUSTER_SIZE = 5
-KAFKA_BROKER_NAME_PREFIX = 'kafka'
-ZOOKEEPER_CLUSTER_SIZE = 5
-ZOOKEEPER_NAME_PREFIX = 'zookeeper'
-
-# prefixed with KAFKA_
-KAFKA_BROKER_OPTS = [
-    'KAFKA_listeners=PLAINTEXT://:9092',
-    # 'KAFKA_advertised_listeners=PLAINTEXT://kafka1:9092',
-    'KAFKA_log_dirs=/kafkadata',
-    'KAFKA_num_partitions=3',
-    'KAFKA_delete_topic_enable=true',
-    'KAFKA_auto_create_topics_enable=true',
-    # 'KAFKA_zookeeper_connect=zookeeper1:2181,zookeeper2:2181,zookeeper3:2181',
-]
-
-# prefixed with ZOOKEEPER_
-ZOOKEEPER_OPTS = [
-    # 'ZOOKEEPER_myid=1',
-    'ZOOKEEPER_initLimit=5',
-    'ZOOKEEPER_syncLimit=2',
-    'ZOOKEEPER_dataDir=/zookeeperdata',
-    # 'ZOOKEEPER_servers=server.1=zookeeper1:2888:3888,server.2=zookeeper2:2888:3888,server.3=zookeeper3:2888:3888',
-]
-
-
 class KafkaClusterYamlGen(object):
 
-    def __init__(self, image, version):
+    def __init__(self, image, version='2'):
         self.image = image
         self.version = version
 
-        self.num_of_zk = 0
-        self.zk_prefix = ''
-        self.zk_opts = []
+        self.num_of_zk = 5
+        self.zk_prefix = 'zookeeper'
+        self.zk_opts = [
+            # 'ZOOKEEPER_myid=1',
+            'ZOOKEEPER_initLimit=5',
+            'ZOOKEEPER_syncLimit=2',
+            'ZOOKEEPER_dataDir=/zookeeperdata',
+            # 'ZOOKEEPER_servers=server.1=zookeeper1:2888:3888,server.2=zookeeper2:2888:3888,server.3=zookeeper3:2888:3888',
+        ]
 
-        self.num_of_broker = 0
-        self.broker_prefix = ''
-        self.broker_opts = []
+        self.num_of_broker = 5
+        self.broker_prefix = 'kafka'
+        self.broker_opts = [
+            'KAFKA_listeners=PLAINTEXT://:9092',
+            # 'KAFKA_advertised_listeners=PLAINTEXT://kafka1:9092',
+            'KAFKA_log_dirs=/kafkadata',
+            'KAFKA_num_partitions=3',
+            'KAFKA_delete_topic_enable=true',
+            'KAFKA_auto_create_topics_enable=true',
+            # 'KAFKA_zookeeper_connect=zookeeper1:2181,zookeeper2:2181,zookeeper3:2181',
+        ]
 
-        # in GB
-        self.max_jvm_memory = 0
-        self.min_jvm_memory = 0
+        self.max_jvm_memory = '6G'
+        self.min_jvm_memory = '512M'
+
+    def bootstrap_servers(self):
+        return ','.join(
+            '{prefix}{kid}:9092'.format(prefix=self.broker_prefix, kid=i + 1)
+            for i in xrange(self.num_of_broker))
 
     def gen(self):
         '''
@@ -79,7 +70,7 @@ class KafkaClusterYamlGen(object):
             myid = '    - ZOOKEEPER_myid={}'.format(service_idx)
             service.append(myid)
 
-        return _do_gen_service(
+        return gen_services(
             self.num_of_zk, self.zk_prefix, self.image, [2181, 2888, 3888],
             self.zk_opts, add_myid)
 
@@ -97,7 +88,7 @@ class KafkaClusterYamlGen(object):
         self.broker_opts.append(
             'KAFKA_zookeeper_connect={}'.format(zk_connect))
 
-        return _do_gen_service(
+        return gen_services(
             self.num_of_broker, self.broker_prefix, self.image, [9092],
             self.broker_opts, add_advertise_name_and_id)
 
@@ -121,7 +112,7 @@ class KafkaClusterYamlGen(object):
         return ','.join(zk_connect_settings)
 
 
-def _do_gen_service(num, prefix, image, ports, envs, callback):
+def gen_services(num, prefix, image, ports, envs, callback):
     services = []
     for i in xrange(1, num + 1):
         name = '{}{}'.format(prefix, i)
@@ -130,17 +121,20 @@ def _do_gen_service(num, prefix, image, ports, envs, callback):
             '  image: {}'.format(image),
             '  hostname: {}'.format(name),
             '  container_name: {}'.format(name),
-            '  ports:',
         ]
 
-        # ports
-        for port in ports:
-            service.append('    - "{}"'.format(port))
+        if ports:
+            service.append('  ports:')
+
+            # ports
+            for port in ports:
+                service.append('    - "{}"'.format(port))
 
         # envs
-        service.append('  environment:')
-        for env in envs:
-            service.append('    - {}'.format(env))
+        if envs:
+            service.append('  environment:')
+            for env in envs:
+                service.append('    - {}'.format(env))
 
         if callback is not None:
             callback(service, i)
@@ -155,7 +149,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--version', default='2',
                         help='[2|3]. Docker compose file version 2 or 3')
-    parser.add_argument('--image', default=DOCKER_IMAGE,
+    parser.add_argument('--image', default='zlchen/kafka-cluster:0.11',
                         help='Docker image')
     parser.add_argument('--broker_size', type=int, default=5,
                         help='number of kafka brokers')
@@ -171,12 +165,7 @@ def main():
         args.image, args.version)
 
     gen.num_of_zk = args.zookeeper_size
-    gen.zk_prefix = ZOOKEEPER_NAME_PREFIX
-    gen.zk_opts = ZOOKEEPER_OPTS
-
     gen.num_of_broker = args.broker_size
-    gen.broker_prefix = KAFKA_BROKER_NAME_PREFIX
-    gen.broker_opts = KAFKA_BROKER_OPTS
 
     gen.max_jvm_memory = args.max_jvm_memory
     gen.min_jvm_memory = args.min_jvm_memory
@@ -187,7 +176,7 @@ def main():
     with open(yaml_file, 'w') as f:
         f.write(yaml)
 
-    print 'finish generating kafka cluster yaml file in ', yaml_file
+    print 'finish generating kafka cluster yaml file in', yaml_file
 
 
 if __name__ == '__main__':
