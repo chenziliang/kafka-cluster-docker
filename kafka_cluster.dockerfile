@@ -1,6 +1,6 @@
 FROM anapsix/alpine-java:8_jdk
 
-# RUN=kafka or zookeeper
+# ENV RUN=kafka or zookeeper
 
 RUN mkdir -p /kafka/kafka
 WORKDIR /kafka

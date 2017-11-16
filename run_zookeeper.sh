@@ -30,6 +30,10 @@ echo "${ZOOKEEPER_myid}" > ${ZOOKEEPER_dataDir}/myid
 
 sleep 10 # to wait the service name to broadcast
 
+if [ -f /etc/hosts2  ]; then
+    cat /etc/hosts2 >> /etc/hosts
+fi
+
 while :
 do
     ./bin/zookeeper-server-start.sh config/zookeeper.properties
