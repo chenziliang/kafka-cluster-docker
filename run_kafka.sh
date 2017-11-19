@@ -32,10 +32,6 @@ mkdir -p "${KAFKA_log_dirs}"
 
 sleep 20
 
-if [ -f /etc/hosts2  ]; then
-    cat /etc/hosts2 >> /etc/hosts
-fi
-
 while :
 do
     ./bin/kafka-server-start.sh config/server.properties

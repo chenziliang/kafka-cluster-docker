@@ -5,9 +5,12 @@ import argparse
 
 class KafkaClusterYamlGen(object):
 
-    def __init__(self, image, version='2'):
+    DATA_DIR_ROOT = '/kafkadata'
+
+    def __init__(self, image, version='2', volumes=None):
         self.image = image
         self.version = version
+        self.volumes = volumes
 
         self.num_of_zk = 5
         self.zk_prefix = 'zookeeper'
@@ -15,7 +18,7 @@ class KafkaClusterYamlGen(object):
             # 'ZOOKEEPER_myid=1',
             'ZOOKEEPER_initLimit=5',
             'ZOOKEEPER_syncLimit=2',
-            'ZOOKEEPER_dataDir=/zookeeperdata',
+            'ZOOKEEPER_dataDir={}/zookeeper'.format(self.DATA_DIR_ROOT),
             # 'ZOOKEEPER_servers=server.1=zookeeper1:2888:3888,server.2=zookeeper2:2888:3888,server.3=zookeeper3:2888:3888',
         ]
 
@@ -25,7 +28,7 @@ class KafkaClusterYamlGen(object):
         self.broker_opts = [
             'KAFKA_listeners=PLAINTEXT://:9092',
             # 'KAFKA_advertised_listeners=PLAINTEXT://kafka1:9092',
-            'KAFKA_log_dirs=/kafkadata',
+            'KAFKA_log_dirs={}/kafkadata'.format(self.DATA_DIR_ROOT),
             # 'KAFKA_num_partitions=3',
             'KAFKA_delete_topic_enable=true',
             'KAFKA_auto_create_topics_enable=true',
@@ -62,18 +65,18 @@ class KafkaClusterYamlGen(object):
         return zk_yaml
 
     def _do_gen_zk(self):
-        zk_servers = self._get_zk_servers()
         self.zk_opts.insert(0, 'RUN=zookeeper')
         self.zk_opts.insert(1, self._get_jvm_memory())
-        self.zk_opts.append('ZOOKEEPER_servers={}'.format(zk_servers))
 
         def add_myid(service, service_idx):
             myid = '    - ZOOKEEPER_myid={}'.format(service_idx)
             service.append(myid)
+            zk_servers = self._get_zk_servers(service_idx)
+            service.append('    - ZOOKEEPER_servers={}'.format(zk_servers))
 
         return gen_services(
             self.num_of_zk, self.zk_prefix, self.image, [2181, 2888, 3888],
-            self.zk_opts, [], [2181], add_myid)
+            self.zk_opts, [], [2181, 2888, 3888], self.volumes, add_myid)
 
     def _do_gen_broker(self):
         def add_advertise_name_and_id(service, service_idx):
@@ -95,17 +98,23 @@ class KafkaClusterYamlGen(object):
 
         return gen_services(
             self.num_of_broker, self.broker_prefix, self.image, [9092],
-            self.broker_opts, depends, [9092], add_advertise_name_and_id)
+            self.broker_opts, depends, [9092], self.volumes,
+            add_advertise_name_and_id)
 
     def _get_jvm_memory(self):
         return 'KAFKA_HEAP_OPTS=-Xmx{} -Xms{}'.format(
             self.max_jvm_memory, self.min_jvm_memory)
 
-    def _get_zk_servers(self):
+    def _get_zk_servers(self, cur_idx):
         zk_servers = []
-        for i in xrange(self.num_of_zk):
-            zk_server = 'server.{kid}={prefix}{kid}:2888:3888'.format(
-                kid=i + 1, prefix=self.zk_prefix)
+        for i in xrange(1, self.num_of_zk + 1):
+            if i != cur_idx:
+                hname = '{prefix}{kid}'.format(prefix=self.zk_prefix, kid=i)
+            else:
+                hname = '0.0.0.0'
+
+            zk_server = 'server.{kid}={hname}:2888:3888'.format(
+                kid=i, hname=hname)
             zk_servers.append(zk_server)
         return ','.join(zk_servers)
 
@@ -118,7 +127,7 @@ class KafkaClusterYamlGen(object):
 
 
 def gen_services(num, prefix, image, ports, envs,
-                 depends, exposed_ports, callback):
+                 depends, exposed_ports, volumes, callback):
     services = []
     for i in xrange(1, num + 1):
         name = '{}{}'.format(prefix, i)
@@ -146,6 +155,12 @@ def gen_services(num, prefix, image, ports, envs,
             service.append('  depends_on:')
             for dep in depends:
                 service.append('    - {}'.format(dep))
+
+        # volumes
+        if volumes:
+            service.append('  volumes:')
+            for vol in volumes:
+                service.append('    - {}'.format(vol))
 
         # envs
         if envs:
